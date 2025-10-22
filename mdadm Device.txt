@@ -1,0 +1,36 @@
+mdadm Device 
+This function combines multiple physical disks to appear as a single, larger disk to the operating system.
+
+Manual
+
+mdadm_mount(void): After mounting the linear device, the mdadm user gains the ability to perform read and write operations on the linear address space, which consolidates all disks. If successful, the function returns 1; otherwise, it returns -1. Attempting to call this function a second time without first unmounting with mdadm_unmount will fail.
+
+mdadm_unmount(void): After unmounting the linear device, all attempts to execute commands on the device will fail. If successful, the function returns 1; if not, it returns -1. Attempting to call this function a second time without calling with mdadm_mount will fail.
+
+mdadm_read(uint32_t addr, uint32_t len, uint8_t *buf): Read data from a specific memory address (addr) and store it in a buffer (buf), it's important to ensure that the address is valid; otherwise, the read operation will not work. Furthermore, trying to read more than 1,024 bytes at once will also result in failure.
+
+mdadm_write(uint32_t addr, uint32_t len, const uint8_t *buf): The function mdadm_write allows the user to write a specified number of bytes (len) from a buffer (buf) to a storage system, starting at a particular address (addr). It's worth noting that the buf parameter is marked as const, meaning that it is an input parameter that mdadm_write only reads from and does not modify. As with mdadm_read, attempting to write to an out-of-bounds linear address will result in failure. Additionally, trying to write more than 1,024 bytes at once will also result in failure.
+
+Caching ===================================================================================
+By adding a cache to the mdadm system, it can work faster and put less pressure on the JBOD. The cache uses a system where each block in the JBOD is assigned a unique key made up of the disk number and block number. When a user wants to read a block, the mdadm system first checks if it's already in the cache. If it is, it gets the block from the cache quickly. If it's not, the mdadm system reads it from the JBOD and adds it to the cache so that it can be retrieved quickly in the future.
+
+cache_create(int num_entries): This function dynamically allocates memory space for a specified number of cache entries (num_entries) and stores the resulting address in the global variable called "cache." It also sets the value of "cache_size" to the same value as num_entries to indicate the size of the cache for use by other functions. It's important to note that calling this function more than once without first calling cache_destroy in between will result in failure. The num_entries argument must be between 2 and 4096, inclusive.
+
+cache_destroy(void): This function frees the memory space that was dynamically allocated for the cache and sets both the cache variable and cache_size to zero. It's important to note that calling this function more than once without first calling cache_create in between will fail.
+
+int cache_lookup(int disk_num, int block_num, uint8_t *buf): This function searches the cache for a specific block identified by its disk number and block number. If it is found, the block is copied into the buffer "buf," which must not be NULL. Additionally, this function increments the "num_queries" global variable every time it performs a lookup. If the lookup is successful, "num_hits" is also incremented, and the "clock" variable is increased and assigned to the "access_time" field of the corresponding cache entry to indicate that it was recently used. The "num_queries" and "num_hits" variables are used to calculate the hit ratio of the cache.
+
+int cache_insert(int disk_num, int block_num, uint8_t *buf): This function inserts a block identified by its disk number and block number into the cache and copies the contents of the buffer "buf"—which must not be NULL—to the corresponding cache entry. This insertion operation will not fail, even if the cache is already full. In such a case, an existing cache entry will be overwritten according to the LRU (Least Recently Used) policy, using the data from the current insert operation. After the block is successfully inserted, the "clock" variable is incremented and assigned to the "access_time" field of the newly inserted cache entry.
+
+void cache_update(int disk_num, int block_num, const uint8_t *buf): This function updates the content of a cache entry if it already exists, replacing the existing data with the new data in the buffer "buf." If the update operation is successful, the access_time of the cache entry is also updated.
+
+bool cache_enabled(void): This function returns a Boolean value indicating whether the cache is currently enabled or not. It is used to integrate the cache with the mdadm_read and mdadm_write functions.
+
+Network====================================================================================
+By integrating networking features into mdadm, it is possible to ensure uninterrupted operation even if the JBOD system fails, as it allows for seamless switching to an alternate JBOD system. The updated implementation replaces calls to jbod_operation with jbod_client_operation, which utilizes the internet to transmit JBOD commands to a JBOD server located anywhere. Moreover, additional functions are provided to facilitate connecting and disconnecting from the JBOD server.
+
+
+jbod_connect(): Attempts to establish a connection to the JBOD SERVER using port JBOD PORT.
+
+jbod_disconnect(): Attempts to close the connection to the JBOD Server.
+
